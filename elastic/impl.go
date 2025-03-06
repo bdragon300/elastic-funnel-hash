@@ -1,4 +1,4 @@
-package elasticold
+package elastic
 
 import (
 	"math"
@@ -33,6 +33,10 @@ func insertBank(table *HashTable, key []byte, value any, offset, limitOffset uin
 	bankSize := uint32(math.Pow(2, bankIndexRev))           // Current bank size
 	bankOffset := uint32(len(table.slots)) - bankSize*2 + 1 // Current bank offset
 
+	if bankOffset+bankSize > limitOffset {
+		return nil // We've reached the limit
+	}
+
 	epsilon1 := float64(bankSize-uint32(table.inserts[bank])) / float64(bankSize) // Free slots fraction, 0..1
 
 	// Next bank epsilon
@@ -46,10 +50,10 @@ func insertBank(table *HashTable, key []byte, value any, offset, limitOffset uin
 	// Denotes the last slot to probe (included), slots after this are ignored
 	var probeSize uint32
 	switch {
-	case epsilon1 > table.delta/2 && epsilon2 > table.shrinkRatio:
+	case epsilon1 > table.fullness/2 && epsilon2 > table.shrinkRatio:
 		// Probe only a portion of slots
-		probeSize = uint32(table.fillRate * min(math.Pow(math.Log2(1/epsilon1), 2), math.Log2(1/table.delta)))
-	case epsilon1 <= table.delta/2:
+		probeSize = uint32(table.fillRate * min(math.Pow(math.Log2(1/epsilon1), 2), math.Log2(1/table.fullness)))
+	case epsilon1 <= table.fullness/2:
 		probeSize = 0 // Go to the next bank
 	case epsilon2 <= table.shrinkRatio:
 		probeSize = bankSize // Probe all slots
@@ -69,7 +73,7 @@ func insertBank(table *HashTable, key []byte, value any, offset, limitOffset uin
 		}
 	}
 
-	if bankIndexRev == 0 || bankOffset+bankSize > limitOffset {
+	if bankIndexRev == 0 {
 		return nil
 	}
 

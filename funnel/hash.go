@@ -18,8 +18,10 @@ func NewHashTableDefault(capacity int) *HashTable {
 	return NewHashTable(capacity, 0.1, 3/4)
 }
 
-// NewHashTable creates a new hash table. Capacity parameter is a total elements. Delta (δ) is a fill factor, i.e.
-// fraction of free slots, must be in range (0,1).
+// NewHashTable creates a new hash table. Capacity parameter is a total elements.
+//
+// Fullness is a fraction of free slots in table, must be in range (0,1). It's the δ parameter.
+//
 // ShrinkRatio controls the distribution of buckets in data banks: the lower the ratio, the quicker data banks shrink
 // towards the end of the table. Must be in range [1/2, 1).
 func NewHashTable(capacity int, delta, shrinkRatio float64) *HashTable {
@@ -53,7 +55,6 @@ func NewHashTable(capacity int, delta, shrinkRatio float64) *HashTable {
 	ovf1Seed := uint32(time.Now().UnixNano() % prime32)
 
 	return &HashTable{
-		alpha:       alpha,
 		bucketSize:  uint32(beta),
 		shrinkRatio: shrinkRatio,
 		capacity:    capacity,
@@ -73,23 +74,38 @@ func NewHashTable(capacity int, delta, shrinkRatio float64) *HashTable {
 	}
 }
 
+// HashTable is an implementation of hash table with funnel hashing algorithm.
+//
+// Basically, all slots are divided into three unequal parts:
+//
+//  1. 90-95% of slots are divided on data banks with buckets of fixed size. The number of buckets in every bank
+//     decreases by the shrink ratio from table start towards the end.
+//  2. Overflow1 bucket, which actually is a separate hash table with random probes. May contain up to 5% of the table.
+//  3. Overflow2 bucket, which is a separate hash table with two-choice hashing. May contain up to 5% of the table.
+//
+// Inserts and lookups always start from the 1st bank, looking only one bucket in every bank. If that fails (bucket is full
+// on insert or doesn't contain a key we're looking for on lookup), we hop to the next bank.
+// If the last bank is reached, we start to process the overflow1 bucket. If it's full, we continue with the
+// overflow2 bucket. If the overflow2 bucket is full, the process is failed.
+//
+// The hash table grows dynamically.
 type HashTable struct {
-	Hasher      func(b []byte) uint32
-	alpha       float64
-	bucketSize  uint32
-	shrinkRatio float64
-	capacity    int
-	inserts     int
+	Hasher func(b []byte) uint32
+
+	bucketSize  uint32  // Bucket size, β parameter in paper
+	shrinkRatio float64 // rate of bank size of buckets decrease, 3/4 in paper
+	capacity    int     // total number of slots, n parameter in paper
+	inserts     int     // total number of occupied slots metric
 
 	root *bbank
-	// overflow1 is an overflow bucket (the first half of Aα+1 bank). Hash table with random probes
+	// overflow1 is an overflow bucket (the first half of Aα+1 bank). Hash table with random probes. B subarray in paper.
 	overflow1 *boverflow
-	// overflow2 is an overflow bucket (the second half of Aα+1 bank). Two-choice hashing
+	// overflow2 is an overflow bucket (the second half of Aα+1 bank). Two-choice hashing. C subarray in paper.
 	overflow2 *boverflow
 }
 
 // Insert inserts a new key-value pair into the hash table. It must be called once for every key, because it makes
-// inserts even if the key already exists. In this case, the hash table will contain two or more items with identical
+// inserts even if the key already exists. Otherwise, the hash table could contain several items with identical
 // keys.
 //
 // To set a value for a key, as any “map” type does, use Set method.
