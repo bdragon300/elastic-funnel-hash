@@ -7,7 +7,7 @@ The implementation based on the paper [Optimal Bounds for Open Addressing Withou
 ## Installation
 
 ```bash
-go get github.com/bdragon300/elastic-funnel-hashing
+go get github.com/bdragon300/elastic-funnel-hash
 ```
 
 ## Usage
