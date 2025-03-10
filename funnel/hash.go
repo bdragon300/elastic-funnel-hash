@@ -45,11 +45,11 @@ func NewHashTable(capacity int, delta, bankShrink float64) *HashTable {
 	slots := capacity - overflowSlots
 
 	// Create the banks with non-zero size, their count could be less than α
-	var bb, bb2 *Bbank
+	var bb, bb2 *Bank
 	for i := 0; i < int(alpha) && slots > int(beta); i++ {
 		size := float64(slots) * (1 - bankShrink)
 		size = beta * math.Ceil(size/beta) // Round up to the nearest multiple of β
-		b := &Bbank{Size: int(size)}
+		b := &Bank{Size: int(size)}
 		if bb2 != nil {
 			bb2.Next = b
 		} else {
@@ -82,14 +82,14 @@ func NewHashTable(capacity int, delta, bankShrink float64) *HashTable {
 		BucketSize: int(beta),
 		Capacity:   capacity,
 		Banks:      bb,
-		Overflow1: &Boverflow{
-			Slots:   make([]*bslot, ovf1Slots),
+		Overflow1: &Overflow{
+			Slots:   make([]*Slot, ovf1Slots),
 			Rnd:     ovf1Rnd,
 			Seed:    ovf1Seed,
 			Loglogn: logLogn,
 		},
-		Overflow2: &Boverflow{
-			Slots:   make([]*bslot, ovf2Slots),
+		Overflow2: &Overflow{
+			Slots:   make([]*Slot, ovf2Slots),
 			Loglogn: logLogn,
 		},
 	}
@@ -102,7 +102,7 @@ func NewHashTable(capacity int, delta, bankShrink float64) *HashTable {
 //  1. 90-95% of data is stored in fixed count of banks, each consists of fixed size buckets. The number of buckets
 //     in every bank geometrically decreases by the “shrink ratio” from table start towards the end. Bucket size, bucket
 //     count and banks count are calculated upon table creation.
-//  2. Overflow1 bucket, that actually is another separate mini-hashtable supporting the uniform random probing.
+//  2. Overflow bucket, that actually is another separate mini-hashtable supporting the uniform random probing.
 //     May occupy up to 5% of the table.
 //  3. Overflow2 bucket, that is a separate mini-hashtable supporting the two-choice hashing containing the fixed size buckets.
 //     May occupy up to 5% of the table.
@@ -120,11 +120,11 @@ type HashTable struct {
 	Capacity   int // total number of slots, n parameter in paper
 	Inserts    int // Metric of total number of occupied slots
 
-	Banks *Bbank
+	Banks *Bank
 	// overflow1 is an overflow bucket (the first half of Aα+1 "special array", the B subarray in paper). Hash table with random probes.
-	Overflow1 *Boverflow
+	Overflow1 *Overflow
 	// overflow2 is an overflow bucket (the second half of Aα+1 "special array", the C subarray in paper). Two-choice hashing.
-	Overflow2 *Boverflow
+	Overflow2 *Overflow
 }
 
 // Insert inserts a new key-value pair into the hash table. It must be called once for every key, because it makes

@@ -6,20 +6,20 @@ import (
 	"slices"
 )
 
-type Bbank struct {
-	Slots []*bslot // Contains buckets * β slots
+type Bank struct {
+	Slots []*Slot // Contains buckets * β slots
 	Size  int
-	Next  *Bbank // Ai+1 bank
+	Next  *Bank // Ai+1 bank
 }
 
-type bslot struct {
+type Slot struct {
 	Tophash byte
 	Key     []byte
 	Value   any
 }
 
-type Boverflow struct {
-	Slots   []*bslot
+type Overflow struct {
+	Slots   []*Slot
 	Loglogn float64 // log2(log2(capacity))
 	Seed    uint32
 	Rnd     *rand.ChaCha8
@@ -27,7 +27,7 @@ type Boverflow struct {
 
 func insert(table *HashTable, key []byte, value any) {
 	hsh := table.Hasher(key)
-	ok := bankInsert(table, table.Banks, hsh, key, value)
+	ok := bankInsert(table.Banks, hsh, key, value, table.BucketSize)
 	if len(table.Overflow1.Slots) > 0 && !ok {
 		ok = overflowUniformInsert(table.Overflow1, hsh, key, value, len(table.Overflow2.Slots) == 0)
 	}
@@ -42,9 +42,9 @@ func insert(table *HashTable, key []byte, value any) {
 	table.Inserts++
 }
 
-func lookup(table *HashTable, key []byte) (*bslot, bool) {
+func lookup(table *HashTable, key []byte) (*Slot, bool) {
 	hsh := table.Hasher(key)
-	if value, ok := bankLookup(table, table.Banks, hsh, key); ok {
+	if value, ok := bankLookup(table.Banks, hsh, key, table.BucketSize); ok {
 		return value, true
 	}
 	if len(table.Overflow1.Slots) > 0 {
@@ -62,44 +62,45 @@ func lookup(table *HashTable, key []byte) (*bslot, bool) {
 }
 
 // bankInsert makes "attempted insertion" a key-value pair into a banks except overflow banks.
-func bankInsert(table *HashTable, bank *Bbank, hsh uint32, key []byte, value any) bool {
+func bankInsert(bank *Bank, hsh uint32, key []byte, value any, bucketSize int) bool {
 	if bank == nil {
 		return false
 	}
 	slots := bank.Size
 	if bank.Slots == nil {
-		bank.Slots = make([]*bslot, slots)
+		bank.Slots = make([]*Slot, slots)
 	}
 
-	buckets := slots / table.BucketSize
-	bucketOffset := int(hsh%uint32(buckets)) * table.BucketSize
-	startOffset := int(hsh % uint32(table.BucketSize))
+	buckets := slots / bucketSize
+	bucketOffset := int(hsh%uint32(buckets)) * bucketSize
+	innerOffset := int(hsh % uint32(bucketSize))
 
-	// Linear circular probing, start from "random" slot in bucket
-	for j := 0; j < table.BucketSize; j++ {
-		idx := bucketOffset + (startOffset+j)%table.BucketSize
+	// Linear circular probing one bucket, starting from slot depending on hash
+	for j := 0; j < bucketSize; j++ {
+		idx := bucketOffset + (innerOffset+j)%bucketSize
 		if bank.Slots[idx] == nil {
 			bank.Slots[idx] = newSlot(hsh, key, value)
 			return true
 		}
 	}
 
-	return bankInsert(table, bank.Next, hsh, key, value)
+	return bankInsert(bank.Next, hsh, key, value, bucketSize)
 }
 
 // bankLookup searches for a key-value pair in a banks except overflow banks.
-func bankLookup(table *HashTable, bank *Bbank, hsh uint32, key []byte) (*bslot, bool) {
+func bankLookup(bank *Bank, hsh uint32, key []byte, bucketSize int) (*Slot, bool) {
 	if bank == nil {
 		return nil, false
 	}
 	slots := len(bank.Slots)
 
-	buckets := slots / table.BucketSize
-	offset := int(hsh%uint32(buckets)) * table.BucketSize
+	buckets := slots / bucketSize
+	bucketOffset := int(hsh%uint32(buckets)) * bucketSize
+	innerOffset := int(hsh % uint32(bucketSize))
 
-	// Linear circular probing, start from "random" slot in bucket
-	for j := 0; j < table.BucketSize; j++ {
-		idx := offset + j%table.BucketSize
+	// Linear circular probing one bucket, starting from slot depending on hash
+	for j := 0; j < bucketSize; j++ {
+		idx := bucketOffset + (innerOffset+j)%bucketSize
 		if bank.Slots[idx] == nil {
 			continue
 		}
@@ -108,13 +109,13 @@ func bankLookup(table *HashTable, bank *Bbank, hsh uint32, key []byte) (*bslot, 
 		}
 	}
 
-	return bankLookup(table, bank.Next, hsh, key)
+	return bankLookup(bank.Next, hsh, key, bucketSize)
 }
 
 // overflowUniformInsert tries to insert a key-value pair into the overflow1 bank. This bank behaves as a separate
 // open-addressed hash table with uniform random probing. Returns true if the insertion was successful, otherwise false.
 // The fullProbe is true if the insertion must probe the whole table instead of the log(log(n)) slots.
-func overflowUniformInsert(ovf *Boverflow, hsh uint32, key []byte, value any, fullProbe bool) bool {
+func overflowUniformInsert(ovf *Overflow, hsh uint32, key []byte, value any, fullProbe bool) bool {
 	var seed [32]byte
 	binary.BigEndian.PutUint32(seed[:], hsh^ovf.Seed)
 	ovf.Rnd.Seed(seed)
@@ -141,14 +142,13 @@ func overflowUniformInsert(ovf *Boverflow, hsh uint32, key []byte, value any, fu
 // overflowUniformLookup searches for a key-value pair in the overflow1 bank. This bank behaves as a separate
 // open-addressed hash table with uniform random probing. Returns a found slot and true if the slot was found, otherwise
 // nil and false. The fullProbe is true if the insertion must probe the whole table instead of the log(log(n)) slots.
-func overflowUniformLookup(ovf *Boverflow, hsh uint32, key []byte, fullProbe bool) (*bslot, bool) {
+func overflowUniformLookup(ovf *Overflow, hsh uint32, key []byte, fullProbe bool) (*Slot, bool) {
 	var seed [32]byte
 	binary.BigEndian.PutUint32(seed[:], hsh^ovf.Seed)
 	ovf.Rnd.Seed(seed)
 
 	slots := len(ovf.Slots)
 
-	// Random probing
 	idx := hsh % uint32(slots)
 	probes := int(ovf.Loglogn)
 	if fullProbe {
@@ -170,18 +170,19 @@ func overflowUniformLookup(ovf *Boverflow, hsh uint32, key []byte, fullProbe boo
 // overflowTwoChoiceInsert tries to insert a key-value pair into the overflow2 bank. This bank behaves as a separate
 // open-addressed hash table with buckets and two-choice hashing.
 // Returns a found slot and true if the slot was found, otherwise nil and false.
-func overflowTwoChoiceInsert(ovf *Boverflow, hsh1, hsh2 uint32, key []byte, value any) bool {
+func overflowTwoChoiceInsert(ovf *Overflow, hsh1, hsh2 uint32, key []byte, value any) bool {
 	// Linear probing two buckets, fail if both are full
-	bucketSize := uint32(2 * ovf.Loglogn)
-	bidx1 := hsh1 % bucketSize
-	bidx2 := hsh2 % bucketSize
-	for j := uint32(0); j < bucketSize; j++ {
-		if ovf.Slots[bidx1+j] == nil {
-			ovf.Slots[bidx1+j] = newSlot(hsh1, key, value)
+	bucketSize := int(2 * ovf.Loglogn)
+	buckets := len(ovf.Slots) / bucketSize
+	bucket1 := int(hsh1%uint32(buckets)) * bucketSize
+	bucket2 := int(hsh2%uint32(buckets)) * bucketSize
+	for j := 0; j < bucketSize; j++ {
+		if ovf.Slots[bucket1+j] == nil {
+			ovf.Slots[bucket1+j] = newSlot(hsh1, key, value)
 			return true
 		}
-		if ovf.Slots[bidx2+j] == nil {
-			ovf.Slots[bidx2+j] = newSlot(hsh2, key, value)
+		if ovf.Slots[bucket2+j] == nil {
+			ovf.Slots[bucket2+j] = newSlot(hsh2, key, value)
 			return true
 		}
 	}
@@ -192,31 +193,32 @@ func overflowTwoChoiceInsert(ovf *Boverflow, hsh1, hsh2 uint32, key []byte, valu
 // overflowTwoChoiceLookup searches for a key-value pair in the overflow2 bank. This bank behaves as a separate
 // open-addressed hash table with buckets and two-choice hashing.
 // Returns a found slot and true if the slot was found, otherwise nil and false.
-func overflowTwoChoiceLookup(ovf *Boverflow, hsh1, hsh2 uint32, key []byte) (*bslot, bool) {
+func overflowTwoChoiceLookup(ovf *Overflow, hsh1, hsh2 uint32, key []byte) (*Slot, bool) {
 	// Linear probing two buckets
-	bucketSize := uint32(2 * ovf.Loglogn)
-	bidx1 := hsh1 % bucketSize
-	bidx2 := hsh2 % bucketSize
-	for j := uint32(0); j < bucketSize; j++ {
-		if ovf.Slots[bidx1+j] == nil {
+	bucketSize := int(2 * ovf.Loglogn)
+	buckets := len(ovf.Slots) / bucketSize
+	bucket1 := int(hsh1%uint32(buckets)) * bucketSize
+	bucket2 := int(hsh2%uint32(buckets)) * bucketSize
+	for j := 0; j < bucketSize; j++ {
+		if ovf.Slots[bucket1+j] == nil {
 			return nil, false
 		}
-		if ovf.Slots[bidx1+j].Tophash == tophash(hsh1) && slices.Equal(ovf.Slots[bidx1+j].Key, key) {
-			return ovf.Slots[bidx1+j], true
+		if ovf.Slots[bucket1+j].Tophash == tophash(hsh1) && slices.Equal(ovf.Slots[bucket1+j].Key, key) {
+			return ovf.Slots[bucket1+j], true
 		}
-		if ovf.Slots[bidx2+j] == nil {
+		if ovf.Slots[bucket2+j] == nil {
 			return nil, false
 		}
-		if ovf.Slots[bidx2+j].Tophash == tophash(hsh2) && slices.Equal(ovf.Slots[bidx2+j].Key, key) {
-			return ovf.Slots[bidx2+j], true
+		if ovf.Slots[bucket2+j].Tophash == tophash(hsh2) && slices.Equal(ovf.Slots[bucket2+j].Key, key) {
+			return ovf.Slots[bucket2+j], true
 		}
 	}
 
 	return nil, false
 }
 
-func newSlot(hsh uint32, key []byte, value any) *bslot {
-	return &bslot{
+func newSlot(hsh uint32, key []byte, value any) *Slot {
+	return &Slot{
 		Tophash: tophash(hsh),
 		Key:     key,
 		Value:   value,
