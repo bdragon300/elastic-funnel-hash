@@ -22,19 +22,19 @@ func NewHashTableDefault(capacity int) *HashTable {
 
 // NewHashTable creates a new hash table. Capacity parameter is a total elements.
 //
-// Delta is a fraction of free slots in table, must be in range (0,1).
+// Delta is a fraction of slots to keep free in table. Affects to performance. Must be in range (0,1).
 //
 // bankShrink controls the distribution of buckets in data banks: the lower the ratio, the quicker data banks shrink
-// towards the end of the table. Must be in range [1/2, 1). The constant 3/4 in the paper.
+// towards the end of the table. Must be in range [1/2, 1). The constant 3/4 in the Paper.
 func NewHashTable(capacity int, delta, bankShrink float64) *HashTable {
-	if bankShrink < minBankShrink || bankShrink >= 1 {
-		panic(fmt.Errorf("bankShrink must be in range [%v, 1)", minBankShrink))
+	if capacity <= 0 {
+		panic(fmt.Errorf("capacity must be positive"))
 	}
 	if delta <= 0 || delta >= 1 {
 		panic(fmt.Errorf("delta must be in range (0, 1)"))
 	}
-	if capacity <= 0 {
-		panic(fmt.Errorf("capacity must be positive"))
+	if bankShrink < minBankShrink || bankShrink >= 1 {
+		panic(fmt.Errorf("bankShrink must be in range [%v, 1)", minBankShrink))
 	}
 
 	alpha := math.Ceil(4*math.Log2(1/delta)) + banksMinCount // Banks count
@@ -116,20 +116,19 @@ func NewHashTable(capacity int, delta, bankShrink float64) *HashTable {
 type HashTable struct {
 	Hasher func(b []byte) uint32
 
-	BucketSize int // Bank size, β parameter in paper
-	Capacity   int // total number of slots, n parameter in paper
+	BucketSize int // Bank size, β parameter in Paper
+	Capacity   int // total number of slots, n parameter in Paper
 	Inserts    int // Metric of total number of occupied slots
 
 	Banks *Bank
-	// overflow1 is an overflow bucket (the first half of Aα+1 "special array", the B subarray in paper). Hash table with random probes.
+	// overflow1 is an overflow bucket (the first half of Aα+1 "special array", the B subarray in Paper). Hash table with random probes.
 	Overflow1 *Overflow
-	// overflow2 is an overflow bucket (the second half of Aα+1 "special array", the C subarray in paper). Two-choice hashing.
+	// overflow2 is an overflow bucket (the second half of Aα+1 "special array", the C subarray in Paper). Two-choice hashing.
 	Overflow2 *Overflow
 }
 
-// Insert inserts a new key-value pair into the hash table. It must be called once for every key, because it makes
-// inserts even if the key already exists. Otherwise, the hash table could contain several items with identical
-// keys.
+// Insert inserts a new key-value pair into the hash table. It does not deduplicate keys, so if the key already exists,
+// it will be inserted again.
 //
 // To set a value for a key, as any “map” type does, use Set method.
 func (t *HashTable) Insert(key []byte, value any) {

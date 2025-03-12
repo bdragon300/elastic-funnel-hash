@@ -24,8 +24,8 @@ func TestOverflowTwoChoiceInsert(t *testing.T) {
 		hashes1 := make([]uint32, bucketSize*buckets)
 		hashes2 := make([]uint32, bucketSize*buckets)
 		for i, k := range keys {
-			hashes1[i] = uint32(k)*bucketSize<<24 | uint32(k*k)
-			hashes2[i] = uint32(k)*bucketSize<<24 | uint32(k*k)
+			hashes1[i] = uint32(k*k)
+			hashes2[i] = uint32(k*k)
 		}
 
 		for i, k := range keys {
@@ -40,7 +40,6 @@ func TestOverflowTwoChoiceInsert(t *testing.T) {
 			assert.True(t, ok)
 			assert.Equal(t, []byte{k}, slot.Key)
 			assert.Equal(t, []byte{k}, slot.Value)
-			assert.Equal(t, byte(uint32(k)*bucketSize), slot.Tophash)
 		}
 	})
 
@@ -48,14 +47,12 @@ func TestOverflowTwoChoiceInsert(t *testing.T) {
 		slots := make([]*Slot, bucketSize*buckets)
 		for i := bucketSize * 1; i < bucketSize*1+bucketSize; i++ { // Fill bucket 1
 			slots[i] = &Slot{
-				Tophash: byte(uint32(i * bucketSize)), // Eliminate tophash affecting to the bucket index calculation
 				Key:     []byte{byte(i)},
 				Value:   []byte{byte(i)},
 			}
 		}
 		for i := bucketSize * 4; i < bucketSize*4+bucketSize; i++ { // Fill bucket 4
 			slots[i] = &Slot{
-				Tophash: byte(uint32(i * bucketSize)), // Eliminate tophash affecting to the bucket index calculation
 				Key:     []byte{byte(i)},
 				Value:   []byte{byte(i)},
 			}
@@ -65,10 +62,8 @@ func TestOverflowTwoChoiceInsert(t *testing.T) {
 		hsh1 := uint32(8657) // bucket 1
 		hsh2 := uint32(9812) // bucket 4
 
-		h1 := bucketSize*1*bucketSize<<24 | hsh1 // bucket 1 + key tophash
-		h2 := bucketSize*4*bucketSize<<24 | hsh2 // bucket 4 + key tophash
 		assert.False(
-			t, overflowTwoChoiceInsert(&ovf, h1, h2, []byte{0}, []byte{0}),
+			t, overflowTwoChoiceInsert(&ovf, hsh1, hsh2, []byte{0}, []byte{0}),
 			"table overflow",
 		)
 	})
@@ -85,7 +80,6 @@ func TestOverflowTwoChoiceLookup(t *testing.T) {
 		var slots []*Slot
 		for i := 0; i < bucketSize*buckets; i++ {
 			slots = append(slots, &Slot{
-				Tophash: byte(uint32(i * bucketSize)), // Eliminate tophash affecting to the bucket index calculation
 				Key:     []byte{byte(i)},
 				Value:   []byte{byte(i)},
 			})
@@ -96,16 +90,12 @@ func TestOverflowTwoChoiceLookup(t *testing.T) {
 		hsh2 := uint32(9811) // bucket 3
 
 		for i := uint32(7 * bucketSize); i < 7*bucketSize+bucketSize; i++ {
-			h1 := i*bucketSize<<24 | hsh1 // bucket 7 + key tophash
-			h2 := i*bucketSize<<24 | hsh2 // bucket 3 + key tophash
-			slot, ok := overflowTwoChoiceLookup(&ovf, h1, h2, []byte{byte(i)})
+			slot, ok := overflowTwoChoiceLookup(&ovf, hsh1, hsh2, []byte{byte(i)})
 			assert.True(t, ok)
 			assert.Equal(t, slots[i], slot)
 		}
 		for i := uint32(3 * bucketSize); i < 3*bucketSize+bucketSize; i++ {
-			h1 := i*bucketSize<<24 | hsh1 // bucket 7 + key tophash
-			h2 := i*bucketSize<<24 | hsh2 // bucket 3 + key tophash
-			slot, ok := overflowTwoChoiceLookup(&ovf, h1, h2, []byte{byte(i)})
+			slot, ok := overflowTwoChoiceLookup(&ovf, hsh1, hsh2, []byte{byte(i)})
 			assert.True(t, ok)
 			assert.Equal(t, slots[i], slot)
 		}
@@ -115,7 +105,6 @@ func TestOverflowTwoChoiceLookup(t *testing.T) {
 		var slots []*Slot
 		for i := 0; i < bucketSize*buckets; i++ {
 			slots = append(slots, &Slot{
-				Tophash: byte(uint32(i * bucketSize)), // Eliminate tophash affecting to the bucket index calculation
 				Key:     []byte{byte(i)},
 				Value:   []byte{byte(i)},
 			})
@@ -127,27 +116,23 @@ func TestOverflowTwoChoiceLookup(t *testing.T) {
 
 		// Hash matches, but key is different
 		for i := uint32(7 * bucketSize); i < 7*bucketSize+bucketSize; i++ {
-			h1 := i*bucketSize<<24 | hsh1 // bucket 7 + key tophash
-			h2 := i*bucketSize<<24 | hsh2 // bucket 3 + key tophash
-			_, ok := overflowTwoChoiceLookup(&ovf, h1, h2, []byte{byte(i + 1)})
+			_, ok := overflowTwoChoiceLookup(&ovf, hsh1, hsh2, []byte{byte(i + 100)})
 			assert.False(t, ok)
 		}
 		for i := uint32(3 * bucketSize); i < 3*bucketSize+bucketSize; i++ {
-			h1 := i*bucketSize<<24 | hsh1 // bucket 7 + key tophash
-			h2 := i*bucketSize<<24 | hsh2 // bucket 3 + key tophash
-			_, ok := overflowTwoChoiceLookup(&ovf, h1, h2, []byte{byte(i + 1)})
+			_, ok := overflowTwoChoiceLookup(&ovf, hsh1, hsh2, []byte{byte(i + 100)})
 			assert.False(t, ok)
 		}
 		// Key matches, but hash is different
 		for i := uint32(7 * bucketSize); i < 7*bucketSize+bucketSize; i++ {
-			h1 := i*bucketSize<<24 | hsh1 + 1 // bucket 7 + key tophash
-			h2 := i*bucketSize<<24 | hsh2 + 1 // bucket 3 + key tophash
+			h1 := hsh1 +1
+			h2:=hsh2+1
 			_, ok := overflowTwoChoiceLookup(&ovf, h1, h2, []byte{byte(i)})
 			assert.False(t, ok)
 		}
 		for i := uint32(3 * bucketSize); i < 3*bucketSize+bucketSize; i++ {
-			h1 := i*bucketSize<<24 | hsh1 + 1 // bucket 7 + key tophash
-			h2 := i*bucketSize<<24 | hsh2 + 1 // bucket 3 + key tophash
+			h1 := hsh1 +1
+			h2:=hsh2+1
 			_, ok := overflowTwoChoiceLookup(&ovf, h1, h2, []byte{byte(i)})
 			assert.False(t, ok)
 		}
@@ -161,15 +146,11 @@ func TestOverflowTwoChoiceLookup(t *testing.T) {
 		hsh2 := uint32(9811) // bucket 3
 
 		for i := uint32(7 * bucketSize); i < 7*bucketSize+bucketSize; i++ {
-			h1 := i*bucketSize<<24 | hsh1 // bucket 7 + key tophash
-			h2 := i*bucketSize<<24 | hsh2 // bucket 3 + key tophash
-			_, ok := overflowTwoChoiceLookup(&ovf, h1, h2, []byte{byte(i)})
+			_, ok := overflowTwoChoiceLookup(&ovf, hsh1, hsh2, []byte{byte(i)})
 			assert.False(t, ok)
 		}
 		for i := uint32(3 * bucketSize); i < 3*bucketSize+bucketSize; i++ {
-			h1 := i*bucketSize<<24 | hsh1 // bucket 7 + key tophash
-			h2 := i*bucketSize<<24 | hsh2 // bucket 3 + key tophash
-			_, ok := overflowTwoChoiceLookup(&ovf, h1, h2, []byte{byte(i)})
+			_, ok := overflowTwoChoiceLookup(&ovf, hsh1, hsh2, []byte{byte(i)})
 			assert.False(t, ok)
 		}
 	})
@@ -179,7 +160,6 @@ func TestOverflowTwoChoiceLookup(t *testing.T) {
 		var slots []*Slot
 		for i := 0; i < bucketSize*buckets; i++ {
 			slots = append(slots, &Slot{
-				Tophash: byte(uint32(i * bucketSize)), // Eliminate tophash affecting to the bucket index calculation
 				Key:     []byte{byte(i)},
 				Value:   []byte{byte(i)},
 			})
@@ -193,9 +173,7 @@ func TestOverflowTwoChoiceLookup(t *testing.T) {
 			5 * bucketSize, 5*bucketSize + bucketSize - 1, // Keys are located in bucket 5
 		}
 		for _, tt := range tests {
-			h1 := tt*bucketSize<<24 | hsh1 // bucket 6 + key tophash
-			h2 := tt*bucketSize<<24 | hsh2 // bucket 4 + key tophash
-			_, ok := overflowTwoChoiceLookup(&ovf, h1, h2, []byte{byte(tt)})
+			_, ok := overflowTwoChoiceLookup(&ovf, hsh1, hsh2, []byte{byte(tt)})
 			assert.False(t, ok)
 		}
 	})
@@ -218,7 +196,7 @@ func TestOverflowUniformInsert(t *testing.T) {
 		t.Logf("keys: %#v", keys)
 		hashes := make([]uint32, slotsCount)
 		for i, k := range keys {
-			hashes[i] = uint32(k)<<24 | uint32(k*k)
+			hashes[i] = uint32(k*k)
 		}
 
 		for i, k := range keys {
@@ -233,7 +211,6 @@ func TestOverflowUniformInsert(t *testing.T) {
 			assert.True(t, ok)
 			assert.Equal(t, []byte{k}, slot.Key)
 			assert.Equal(t, []byte{k}, slot.Value)
-			assert.Equal(t, k, slot.Tophash)
 		}
 	})
 
@@ -245,7 +222,7 @@ func TestOverflowUniformInsert(t *testing.T) {
 		t.Logf("keys: %#v", keys)
 		hashes := make([]uint32, slotsCount)
 		for i, k := range keys {
-			hashes[i] = uint32(k)<<24 | uint32(k*k)
+			hashes[i] = uint32(k*k)
 		}
 
 		for i, k := range keys {
@@ -260,7 +237,6 @@ func TestOverflowUniformInsert(t *testing.T) {
 			assert.True(t, ok)
 			assert.Equal(t, []byte{k}, slot.Key)
 			assert.Equal(t, []byte{k}, slot.Value)
-			assert.Equal(t, k, slot.Tophash)
 		}
 	})
 }
@@ -280,7 +256,7 @@ func TestOverflowUniformLookup(t *testing.T) {
 		keys := []byte{4, 19, 33, 47}
 		hashes := make([]uint32, slotsCount)
 		for i, k := range keys {
-			hashes[i] = uint32(k)<<24 | uint32(k*k)
+			hashes[i] = uint32(k*k)
 		}
 
 		// Place items to the slots unreachable by the uniform probing
@@ -296,7 +272,6 @@ func TestOverflowUniformLookup(t *testing.T) {
 			}
 			require.Nil(t, ovf.Slots[idx], "[%v]: %v", idx, k) // Tune slotsCount or keys count if constantly fails
 			ovf.Slots[idx] = &Slot{
-				Tophash: k,
 				Key:     []byte{k},
 				Value:   []byte{k},
 			}
@@ -309,7 +284,6 @@ func TestOverflowUniformLookup(t *testing.T) {
 			assert.True(t, ok)
 			assert.Equal(t, []byte{k}, slot.Key)
 			assert.Equal(t, []byte{k}, slot.Value)
-			assert.Equal(t, k, slot.Tophash)
 		}
 	})
 
@@ -317,10 +291,10 @@ func TestOverflowUniformLookup(t *testing.T) {
 		const slotsCount = 45
 		ovf := Overflow{Slots: make([]*Slot, slotsCount), Loglogn: probeLimit}
 
-		keys := []byte{4, 19, 33, 47}
+		keys := []byte{5, 19, 33, 48}
 		hashes := make([]uint32, slotsCount)
 		for i, k := range keys {
-			hashes[i] = uint32(k)<<24 | uint32(k*k)
+			hashes[i] = uint32(k*k)
 		}
 
 		// Make items unreachable for random probing
@@ -330,13 +304,12 @@ func TestOverflowUniformLookup(t *testing.T) {
 			rnd := rand.NewChaCha8(s)
 
 			idx := hashes[i] % slotsCount
-			for i := 0; i < probeLimit; i++ {
+			for j := 0; j < probeLimit; j++ {
 				ovf.Slots[idx] = &Slot{} // Dummy item to keep the probes going
 				idx = uint32(rnd.Uint64() % slotsCount)
 			}
 			require.Nil(t, ovf.Slots[idx], "[%v]: %v", idx, k) // Tune slotsCount or keys count if constantly fails
 			ovf.Slots[idx] = &Slot{
-				Tophash: k,
 				Key:     []byte{k},
 				Value:   []byte{k},
 			}
@@ -362,7 +335,7 @@ func TestBankInsert(t *testing.T) {
 		banks := make([]*Bank, len(bucketCounts))
 		var b *Bank
 		for i := len(bucketCounts) - 1; i >= 0; i-- {
-			banks[i] = &Bank{Slots: make([]*Slot, bucketCounts[i]*bucketSize), Size: bucketCounts[i]*bucketSize, Next: b}
+			banks[i] = &Bank{Data: make([]*Slot, bucketCounts[i]*bucketSize), Size: bucketCounts[i] * bucketSize, Next: b}
 			b = banks[i]
 		}
 
@@ -371,7 +344,7 @@ func TestBankInsert(t *testing.T) {
 		t.Logf("keys: %#v", keys)
 		var hashes []uint32
 		for _, k := range keys {
-			hashes = append(hashes, uint32(k)<<24|uint32(k*k))
+			hashes = append(hashes, uint32(k*k))
 		}
 
 		for i, k := range keys {
@@ -386,7 +359,6 @@ func TestBankInsert(t *testing.T) {
 			assert.True(t, ok)
 			assert.Equal(t, []byte{k}, slot.Key)
 			assert.Equal(t, []byte{k}, slot.Value)
-			assert.Equal(t, k, slot.Tophash)
 		}
 	})
 
@@ -394,7 +366,7 @@ func TestBankInsert(t *testing.T) {
 		banks := make([]*Bank, len(bucketCounts))
 		var b *Bank
 		for i := len(bucketCounts) - 1; i >= 0; i-- {
-			banks[i] = &Bank{Slots: make([]*Slot, bucketCounts[i]*bucketSize), Size: bucketCounts[i]*bucketSize, Next: b}
+			banks[i] = &Bank{Data: make([]*Slot, bucketCounts[i]*bucketSize), Size: bucketCounts[i] * bucketSize, Next: b}
 			b = banks[i]
 		}
 
@@ -402,12 +374,12 @@ func TestBankInsert(t *testing.T) {
 		keys := []byte{4, 19, 33, 47}
 		var hashes []uint32
 		for _, k := range keys {
-			hsh := uint32(k)<<24 | uint32(k*k)
+			hsh := uint32(k*k)
 			hashes = append(hashes, hsh)
 			for bank, count := range bucketCounts {
 				bucket := int(hsh % uint32(count))
-				for j := bucket*bucketSize; j < bucket*bucketSize+bucketSize; j++ {
-					banks[bank].Slots[j] = &Slot{}
+				for j := bucket * bucketSize; j < bucket*bucketSize+bucketSize; j++ {
+					banks[bank].Data[j] = &Slot{}
 				}
 			}
 		}
@@ -429,7 +401,7 @@ func TestBankLookup(t *testing.T) {
 		banks := make([]*Bank, len(bucketCounts))
 		var b *Bank
 		for i := len(bucketCounts) - 1; i >= 0; i-- {
-			banks[i] = &Bank{Slots: make([]*Slot, bucketCounts[i]*bucketSize), Size: bucketCounts[i]*bucketSize, Next: b}
+			banks[i] = &Bank{Data: make([]*Slot, bucketCounts[i]*bucketSize), Size: bucketCounts[i] * bucketSize, Next: b}
 			b = banks[i]
 		}
 
@@ -437,15 +409,14 @@ func TestBankLookup(t *testing.T) {
 		keys := []byte{3, 37, 110}
 		var hashes []uint32
 		for _, k := range keys {
-			hsh := uint32(k)<<24 | uint32(k)
+			hsh := uint32(k)
 			hashes = append(hashes, hsh)
 			for bank, size := range bucketCounts {
 				bucket := int(hsh % uint32(size))
- 				require.Nil(t, banks[bank].Slots[bucket*bucketSize], "[%v]: %v", bank, k) // Tune bucketsCounts or keys if constantly fails
-				banks[bank].Slots[bucket*bucketSize] = &Slot{
-					Tophash: k,
+				require.Nil(t, banks[bank].Data[bucket*bucketSize], "[%v]: %v", bank, k) // Tune bucketsCounts or keys if constantly fails
+				banks[bank].Data[bucket*bucketSize] = &Slot{
 					Key:     []byte{k},
-					Value:   []byte{k+byte(bank)}, // The result should come from the first bank, so value should be k
+					Value:   []byte{k + byte(bank)}, // The result should come from the first bank, so value should be k
 				}
 			}
 		}
@@ -455,7 +426,6 @@ func TestBankLookup(t *testing.T) {
 			assert.True(t, ok)
 			assert.Equal(t, []byte{k}, slot.Key)
 			assert.Equal(t, []byte{k}, slot.Value)
-			assert.Equal(t, k, slot.Tophash)
 		}
 	})
 
@@ -463,26 +433,25 @@ func TestBankLookup(t *testing.T) {
 		banks := make([]*Bank, len(bucketCounts))
 		var b *Bank
 		for i := len(bucketCounts) - 1; i >= 0; i-- {
-			banks[i] = &Bank{Slots: make([]*Slot, bucketCounts[i]*bucketSize), Size: bucketCounts[i]*bucketSize, Next: b}
+			banks[i] = &Bank{Data: make([]*Slot, bucketCounts[i]*bucketSize), Size: bucketCounts[i] * bucketSize, Next: b}
 			b = banks[i]
 		}
 
 		// Put items to the last bank to slot 0 of bucket it should be placed
 		keys := []byte{3, 37, 110}
 		var hashes []uint32
-		bank := len(bucketCounts)-1
+		bank := len(bucketCounts) - 1
 		for _, k := range keys {
-			hsh := uint32(k)<<24 | uint32(k)
+			hsh :=uint32(k)
 			hashes = append(hashes, hsh)
 			bucket := int(hsh % uint32(bucketCounts[bank]))
-			require.Nil(t, banks[bank].Slots[bucket*bucketSize], "[%v]: %v", bank, k) // Tune bucketsCounts or keys if constantly fails
-			banks[bank].Slots[bucket*bucketSize] = &Slot{
-				Tophash: k,
+			require.Nil(t, banks[bank].Data[bucket*bucketSize], "[%v]: %v", bank, k) // Tune bucketsCounts or keys if constantly fails
+			banks[bank].Data[bucket*bucketSize] = &Slot{
 				Key:     []byte{k},
 				Value:   []byte{k},
 			}
 			bank0Bucket := int(hsh % uint32(bucketCounts[0]))
-			banks[0].Slots[bank0Bucket*bucketSize] = &Slot{} // Dummy item in bank 0 to make sure the lookup does not stop there
+			banks[0].Data[bank0Bucket*bucketSize] = &Slot{} // Dummy item in bank 0 to make sure the lookup does not stop there
 		}
 
 		for i, k := range keys {
@@ -490,7 +459,6 @@ func TestBankLookup(t *testing.T) {
 			assert.True(t, ok)
 			assert.Equal(t, []byte{k}, slot.Key)
 			assert.Equal(t, []byte{k}, slot.Value)
-			assert.Equal(t, k, slot.Tophash)
 		}
 	})
 
@@ -498,7 +466,7 @@ func TestBankLookup(t *testing.T) {
 		banks := make([]*Bank, len(bucketCounts))
 		var b *Bank
 		for i := len(bucketCounts) - 1; i >= 0; i-- {
-			banks[i] = &Bank{Slots: make([]*Slot, bucketCounts[i]*bucketSize), Size: bucketCounts[i]*bucketSize, Next: b}
+			banks[i] = &Bank{Data: make([]*Slot, bucketCounts[i]*bucketSize), Size: bucketCounts[i] * bucketSize, Next: b}
 			b = banks[i]
 		}
 
@@ -506,18 +474,17 @@ func TestBankLookup(t *testing.T) {
 		keys := []byte{3, 37, 110}
 		var hashes []uint32
 		for _, k := range keys {
-			hsh := uint32(k)<<24 | uint32(k)
+			hsh := uint32(k)
 			hashes = append(hashes, hsh)
 			for bank, size := range bucketCounts {
-				bucket := int(hsh % uint32(size)) + 1
+				bucket := int(hsh%uint32(size)) + 1
 				if bucket > size-1 {
 					bucket = 0
 				}
-				require.Nil(t, banks[bank].Slots[bucket*bucketSize], "[%v]: %v", bank, k) // Tune bucketsCounts or keys if constantly fails
-				banks[bank].Slots[bucket*bucketSize] = &Slot{
-					Tophash: k,
+				require.Nil(t, banks[bank].Data[bucket*bucketSize], "[%v]: %v", bank, k) // Tune bucketsCounts or keys if constantly fails
+				banks[bank].Data[bucket*bucketSize] = &Slot{
 					Key:     []byte{k},
-					Value:   []byte{k+byte(bank)},
+					Value:   []byte{k + byte(bank)},
 				}
 			}
 		}
@@ -532,7 +499,7 @@ func TestBankLookup(t *testing.T) {
 		banks := make([]*Bank, len(bucketCounts))
 		var b *Bank
 		for i := len(bucketCounts) - 1; i >= 0; i-- {
-			banks[i] = &Bank{Slots: make([]*Slot, bucketCounts[i]*bucketSize), Size: bucketCounts[i]*bucketSize, Next: b}
+			banks[i] = &Bank{Data: make([]*Slot, bucketCounts[i]*bucketSize), Size: bucketCounts[i] * bucketSize, Next: b}
 			b = banks[i]
 		}
 
@@ -540,7 +507,7 @@ func TestBankLookup(t *testing.T) {
 		keys := []byte{4, 19, 33, 47}
 		var hashes []uint32
 		for _, k := range keys {
-			hsh := uint32(k)<<24 | uint32(k*k)
+			hsh := uint32(k*k)
 			hashes = append(hashes, hsh)
 		}
 
