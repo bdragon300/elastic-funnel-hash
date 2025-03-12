@@ -64,13 +64,14 @@ func NewHashTable(capacity int, delta, bank2Occupation, bank1FillFactor float64)
 //
 // All data slots are divided into banks (sub-arrays A1...Alog2(n)) with fixed size geometrically decreasing by the power of 2.
 //
-// Before the insertion and lookup we select a consecutive banks pair (Ai and Ai+1) to work on based on key hash.
-// The exception is the first table's bank, which is used without a pair.
+// Before the insertion or lookup we select a consecutive banks pair (sub-arrays `Ai` and `Ai+1`) to work on based on key hash.
+// The exception is the first table's bank `A1`, which is used without a pair.
 //
-// For insertions, we decide which of banks in pair should be used based on metrics of each one. After that,
-// we insert the key-value into the selected bank. Once a pair of banks become full, the subsequent insertions will fail.
+// For insertions, we decide based on metrics of each bank in the pair which of them should be used. After that,
+// we insert the key-value into the selected bank. Once banks in the pair become full, the subsequent insertions into
+// them will fail.
 //
-// For lookups, we do a limited probes in the 1st bank in pair, then lookup in 2nd bank and then go back and probe the
+// For lookups, we do limited probes in the 1st bank in pair, then lookup in 2nd bank and then go back and probe the
 // remaining slots in the 1st bank.
 //
 // To resolve collisions, we use the uniform random probing.

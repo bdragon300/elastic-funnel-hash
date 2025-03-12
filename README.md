@@ -1,8 +1,22 @@
 # Elastic/Funnel hashing PoC
 
-This is a PoC of funnel hashing and elastic hashing in Go.
+This is a PoC of **funnel hashing** and **elastic hashing** algorithms in Go.
 
-The implementation based on the paper [Optimal Bounds for Open Addressing Without Reordering](https://arxiv.org/abs/2501.02305) by Martin Farach-Colton, Andrew Krapivin, William Kuszmaul
+Based on the Paper [Optimal Bounds for Open Addressing Without Reordering](https://arxiv.org/abs/2501.02305) by Martin Farach-Colton, Andrew Krapivin, William Kuszmaul.
+
+This package contains `funnel` and `elastic` packages with the particular implementations. Every `HashTable` type has
+`Insert`, `Get`, `Set`, `Len` and `Cap` methods.
+
+Because these hash tables are the PoC:
+
+* They don't support key deletion, race detection, etc.
+* Key-value has `[]byte` type
+* Tables have fixed capacity as described in the Paper
+* Because of the previous point, they don't resize (this could be achieved by using overflow buckets or data
+  "evacuation" mechanism, as it done in Go's `map` type, or similar techniques)
+* Because of the previous point, hash tables may accept fewer insertions than table capacity due to data bank overflows,
+  especially if key hashes are not distributed evenly. Keep this in mind when setting the table capacity.
+* All internal variables are publicity accessible
 
 ## Installation
 
@@ -31,63 +45,51 @@ func main() {
 }
 ```
 
-## Elastic hashing
+## Run tests
 
-Basically, this is the hash table with open addressing, where the data is stored in data banks of geometrically
-decreasing sizes. The lookup/insert process depends on each data bank fullness.
+```shell
+go test -v ./...
+```
 
-This PoC contains two variants of algorithm, because its description in the paper mentioned above may be interpreted 
-in different ways (especially for the lookup).
+# Elastic hashing
 
-### Variant 1
+Basically, this is the variant of hash table with open addressing, where the addresses are divided in data banks of geometrically
+decreasing sizes of power of 2. Every bank keeps its metric that counts the inserts made into this bank. The lookups and inserts relies on these metrics.
 
-In this implementation, banks count are calculated on creation and fixed. Table size is not limited, since the banks 
-has dynamic size. Every bank is the linked list of slots.
+All data slots are divided into banks (sub-arrays `A1..Alog2(n)`) with fixed size geometrically decreasing by the power of 2.
 
-All data slots are divided into banks with dynamic size geometrically decreasing by the power of 2. 
-Every slot stores a key, value, and the first byte of hash to speed up the key probing.
+Before the insertion or lookup we select a consecutive banks pair (sub-arrays `Ai` and `Ai+1`) to work on based on key hash.
+The exception is the first table's bank `A1`, which is used without a pair.
 
-In this implementation, the geometric decreasing rate fully depends on hash function quality, specifically on 
-its even distribution of values, because the bank index is calculated roughly as `log2(hash)`.
-Therefore, if the hash function is uniform, banks obey to the geometric progression `2^i`.
+For insertions, we decide based on metrics of each bank in the pair which of them should be used. After that,
+we insert the key-value into the selected bank. Once banks in the pair become full, the subsequent insertions into
+them will fail.
 
-To make the insert or lookup, first we select a bank based on the key hash value.
-On collision, we do the linear probing starting from the first bank slot.
-For inserts, based on selected bank metrics we decide whether we should insert the item to this bank
-or the next one. If we choose the next bank, we do the same for it, and so on, until the item is inserted.
+For lookups, we do limited probes in the 1st bank in pair, then lookup in 2nd bank and then go back and probe the
+remaining slots in the 1st bank.
 
-### Variant 2
+To resolve collisions, we use the uniform random probing.
 
-In this implementation, banks count are calculated on creation and fixed.
-Table size is also fixed and can be set on creation.
 
-All data slots are divided into banks with fixed size geometrically decreasing by the power of 2. Every slot stores
-a key, value, and the first byte of hash to speed up the key probing.
+# Funnel hashing
 
-Inserts and lookups are always start from the 1st bank. On collision, we do the circular linear probing staring
-from offset calculated from the hash. Once all slots are probed, we move to the next bank.
-For inserts, based on bank metrics we decide whether we should insert the item to this bank
-or the next one. If we choose the next bank, we do the same for it, and so on, until the item is inserted or we
-reach the end.
+This is the variant of hash table with open addressing, where the data is divided in data banks of geometrically
+decreasing sizes. Unlike the elastic hashing, every bank is additionally divided by some number of buckets with equal size.
+Also, this algorithm uses two additional overflow mini hash tables with different implementations.
 
-## Funnel hashing
-
-This is the hash table with open addressing, where the data is stored in data banks of geometrically
-decreasing sizes. Unlike the elastic hashing, the banks are additionally divided by buckets, and the lookup/insert 
-process is just linear. Also, this algorithm uses two additional mini-hashtables.
-
-Basically, all data slots are divided into three unequal parts:
+Basically, all data is divided into three unequal parts:
 
 1. 90-95% of data is stored in fixed count of banks, each consists of fixed size buckets. The number of buckets
    in every bank geometrically decreases from table start towards the end. Bucket size, bucket
    count and banks count are calculated upon table creation.
-2. Overflow1 bucket, that actually is another separate mini-hashtable supporting the uniform random probing.
+2. Overflow1 bucket, that actually is a separate mini-hashtable supporting the uniform random probing.
    May occupy up to 5% of the table.
 3. Overflow2 bucket, that is a separate mini-hashtable supporting the two-choice hashing containing the fixed size buckets.
    May occupy up to 5% of the table.
 
-Inserts and lookups always start from the 1st bank. We probe only one bucket in every bank selected based on the key hash.
-If probing fails (bucket is full on insert or doesn't contain a key we're looking for on lookup), we hop to the next bank.
+Inserts and lookups always start from the 1st bank. For every bank, we select a bucket based on key hash. 
+To resolve collisions, we use the linear probing. If no luck (bucket is full on insert or doesn't contain a key 
+we're looking for on lookup), we hop to the next bank.
 Once the last bank is reached, we start to process the overflow1 bucket. If it fails, we continue with the
 overflow2 bucket. If the overflow2 bucket fails, the process is failed.
 

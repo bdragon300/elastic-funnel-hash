@@ -13,8 +13,8 @@ type Bank struct {
 }
 
 type Slot struct {
-	Key     []byte
-	Value   any
+	Key   []byte
+	Value any
 }
 
 type Overflow struct {
@@ -218,7 +218,7 @@ func overflowTwoChoiceLookup(ovf *Overflow, hsh1, hsh2 uint32, key []byte) (*Slo
 
 func newSlot(key []byte, value any) *Slot {
 	return &Slot{
-		Key:     key,
-		Value:   value,
+		Key:   key,
+		Value: value,
 	}
 }
