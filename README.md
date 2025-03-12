@@ -79,13 +79,13 @@ Also, this algorithm uses two additional overflow mini hash tables with differen
 
 Basically, all data is divided into three unequal parts:
 
-1. 90-95% of data is stored in fixed count of banks, each consists of fixed size buckets. The number of buckets
-   in every bank geometrically decreases from table start towards the end. Bucket size, bucket
+1. 90-95% of data is stored in fixed count of banks, each consists of fixed size buckets (the `A'` array in the Paper). 
+   The number of buckets in every bank geometrically decreases from table start towards the end. Bucket size, bucket
    count and banks count are calculated upon table creation.
-2. Overflow1 bucket, that actually is a separate mini-hashtable supporting the uniform random probing.
-   May occupy up to 5% of the table.
-3. Overflow2 bucket, that is a separate mini-hashtable supporting the two-choice hashing containing the fixed size buckets.
-   May occupy up to 5% of the table.
+2. Overflow1 bucket (`B` part of "special array" `Aα+1` in the Paper), that actually is a separate mini-hashtable 
+   supporting the uniform random probing. May occupy up to 5% of the table.
+3. Overflow2 bucket (`C` part of "special array" `Aα+1` in the Paper), that is a separate mini-hashtable supporting 
+   the two-choice hashing containing the fixed size buckets. May occupy up to 5% of the table.
 
 Inserts and lookups always start from the 1st bank. For every bank, we select a bucket based on key hash. 
 To resolve collisions, we use the linear probing. If no luck (bucket is full on insert or doesn't contain a key 
