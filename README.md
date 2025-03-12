@@ -11,11 +11,11 @@ Because these hash tables are the PoC:
 
 * They don't support key deletion, race detection, etc.
 * Key-value has `[]byte` type
-* Tables have fixed capacity as described in the Paper
-* Because of the previous point, they don't resize (this could be achieved by using overflow buckets or data
+* Tables have the fixed capacity as described in the Paper
+* Because of the previous point, they are not resized (this could be achieved by using overflow buckets or data
   "evacuation" mechanism, as it done in Go's `map` type, or similar techniques)
-* Because of the previous point, hash tables may accept fewer insertions than table capacity due to data bank overflows,
-  especially if key hashes are not distributed evenly. Keep this in mind when setting the table capacity.
+* Because of the previous point, hash tables may accept fewer insertions than their capacity due to a particular data 
+  bank overflow, especially if key hashes are not distributed evenly. Keep this in mind when setting the table capacity.
 * All internal variables are publicity accessible
 
 ## Installation
